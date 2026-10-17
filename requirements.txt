@@ -1,0 +1,6 @@
+streamlit>=1.33
+pdfplumber>=4.0
+requests>=2.31
+ddgs>=8.0
+pandas>=2.0
+llama-cpp-python>=0.3

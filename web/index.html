@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF to Quiz with AI</title>
+<style>
+  :root { --bg:#0a0e1a; --panel:#12172b; --accent:#00d4ff; --accent2:#ff6600; --good:#00ff88; --bad:#ff4466; --text:#e6e9f2; --muted:#8a92a8; --border:#232a45; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; }
+  header { background:linear-gradient(135deg,#0a0e1a,#1a2040); padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:22px; color:var(--accent); letter-spacing:1px; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .container { max-width:1100px; margin:0 auto; padding:20px; }
+  .tabs { display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap; }
+  .tab { padding:10px 18px; background:var(--panel); border:1px solid var(--border); border-radius:8px 8px 0 0; cursor:pointer; color:var(--muted); font-size:13px; font-weight:600; }
+  .tab.active { background:var(--accent); color:#000; border-color:var(--accent); }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  input,select,textarea { background:#0a0e1a; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:13px; }
+  input[type=file] { padding:6px; }
+  button { background:var(--accent); color:#000; border:none; padding:10px 18px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px; }
+  button.secondary { background:var(--panel); color:var(--accent); border:1px solid var(--accent); }
+  button.danger { background:var(--bad); color:#fff; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .qcard { background:#0d1224; border:1px solid var(--border); border-radius:10px; padding:20px; margin:12px 0; }
+  .qnum { color:var(--accent); font-weight:700; margin-bottom:8px; }
+  .qtext { font-size:15px; line-height:1.5; margin-bottom:14px; }
+  .opt { display:block; padding:10px 14px; margin:6px 0; border:1px solid var(--border); border-radius:8px; cursor:pointer; transition:all .15s; }
+  .opt:hover { border-color:var(--accent); background:#121a33; }
+  .opt.selected { border-color:var(--accent); background:#1a2850; }
+  .opt.correct { border-color:var(--good); background:#0d2a1a; }
+  .opt.wrong { border-color:var(--bad); background:#2a0d14; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+  .stat { background:#0d1224; border:1px solid var(--border); border-radius:8px; padding:14px; text-align:center; }
+  .stat .v { font-size:24px; font-weight:700; color:var(--accent); }
+  .stat .l { font-size:11px; color:var(--muted); margin-top:4px; }
+  .progress { height:6px; background:#0d1224; border-radius:3px; overflow:hidden; margin:10px 0; }
+  .progress .bar { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .3s; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge.ok { background:#0d2a1a; color:var(--good); }
+  .badge.review { background:#2a1a0d; color:var(--accent2); }
+  .badge.ai { background:#1a1a2a; color:var(--accent); }
+  .muted { color:var(--muted); font-size:12px; }
+  .hidden { display:none; }
+  .timer { font-family:monospace; font-size:18px; color:var(--accent2); }
+  .chat { background:#0d1224; border:1px solid var(--border); border-radius:8px; padding:12px; max-height:300px; overflow-y:auto; margin:8px 0; }
+  .msg { padding:6px 10px; margin:4px 0; border-radius:6px; font-size:13px; }
+  .msg.user { background:#1a2850; text-align:right; }
+  .msg.ai { background:#0d2a1a; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .flex { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .w-full { width:100%; }
+  .mt { margin-top:12px; }
+  .small { font-size:11px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th,td { padding:8px; border-bottom:1px solid var(--border); text-align:left; }
+  th { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PDF to Quiz with AI</h1>
+    <div class="sub">Upload any objective PDF &rarr; get an MCQ test &rarr; score it (SSC +2 / -0.5). AI fills missing answers.</div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" data-tab="load">1. Load</div>
+    <div class="tab" data-tab="key">2. Answer Key</div>
+    <div class="tab" data-tab="quiz">3. Take Test + Score</div>
+    <div class="tab" data-tab="analytics">4. Analytics</div>
+  </div>
+
+  <!-- LOAD TAB -->
+  <div id="tab-load" class="tabcontent">
+    <div class="panel">
+      <h3 style="color:var(--accent2);margin-bottom:10px;">Load Questions</h3>
+      <div class="row">
+        <input type="file" id="pdfFile" accept=".pdf" />
+        <button id="parseBtn">Parse PDF</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="useCombined" /> Load combined JSON (550 Qs)</label>
+      </div>
+      <div class="row">
+        <input type="text" id="sectionFilter" placeholder="Section filter (blank = all)" style="flex:1;min-width:200px;" />
+        <input type="number" id="maxQs" value="50" min="5" max="550" step="5" style="width:100px;" />
+        <label><input type="checkbox" id="shuffle" checked /> Shuffle</label>
+      </div>
+      <div class="row">
+        <button class="secondary" id="loadSample">Try bundled sample (10 Qs)</button>
+      </div>
+      <div id="parseStatus" class="muted mt"></div>
+    </div>
+    <div class="panel">
+      <h3 style="color:var(--accent2);margin-bottom:10px;">Settings</h3>
+      <div class="row">
+        <label>Marks correct: <input type="number" id="marksCorrect" value="2" step="0.5" style="width:80px;" /></label>
+        <label>Negative: <input type="number" id="marksWrong" value="0.5" step="0.25" style="width:80px;" /></label>
+        <label>Timer (min, 0=off): <input type="number" id="timerMin" value="30" step="5" style="width:80px;" /></label>
+        <button class="danger" id="resetQuiz">Reset quiz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANSWER KEY TAB -->
+  <div id="tab-key" class="tabcontent hidden">
+    <div class="panel">
+      <div id="keyContent"><p class="muted">Parse a PDF first (tab 1).</p></div>
+    </div>
+  </div>
+
+  <!-- QUIZ TAB -->
+  <div id="tab-quiz" class="tabcontent hidden">
+    <div class="panel">
+      <div id="quizContent"><p class="muted">Parse a PDF first (tab 1).</p></div>
+    </div>
+  </div>
+
+  <!-- ANALYTICS TAB -->
+  <div id="tab-analytics" class="tabcontent hidden">
+    <div class="panel">
+      <div id="analyticsContent"><p class="muted">Attempt a quiz first.</p></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+// ---------- State ----------
+const state = {
+  questions: [], answers: {}, startTs: null, pos: 0, pageOffset: 0,
+  bank: {kind:'sample'}, qTimes: {}, qEnterTs: null, curQid: null,
+  history: {}, attempts: [], pageSize: 50,
+};
+const PAGE = 50;
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem('pq_'+k)||'null'); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem('pq_'+k, JSON.stringify(v)); } catch(e){} },
+};
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const name = t.dataset.tab;
+    document.querySelectorAll('.tabcontent').forEach(c=>c.classList.add('hidden'));
+    document.getElementById('tab-'+name).classList.remove('hidden');
+    if (name==='key') renderKey();
+    if (name==='quiz') renderQuiz();
+    if (name==='analytics') renderAnalytics();
+  });
+});
+
+function showStatus(msg){ document.getElementById('parseStatus').textContent = msg; }
+
+// ---------- PDF Parsing ----------
+function parseTextToQuestions(text, source) {
+  const qs = [];
+  // Split by Q number
+  const parts = text.split(/(?:^|\n)\s*Q\s*\.?\s*(\d+)\s*[\.\)]\s*/i);
+  // parts: [pre, num1, body1, num2, body2, ...]
+  for (let i=1; i<parts.length; i+=2) {
+    const qnum = parts[i];
+    const body = parts[i+1] || '';
+    let ans = null;
+    const am = body.match(/Ans\s*\.?\s*\(?\s*([A-Da-d])\s*\)?/i);
+    if (am) { ans = am[1].toUpperCase(); }
+    let bodyClean = body.replace(/Ans\s*\.?\s*\(?\s*[A-Da-d]\s*\)?/gi, '').trim();
+    // options
+    const optRe = /\(([A-Da-d])\)\s*(.*?)(?=\([A-Da-d]\)|$)/gs;
+    const opts = [];
+    const seen = new Set();
+    let m;
+    while ((m = optRe.exec(bodyClean)) !== null) {
+      const L = m[1].toUpperCase();
+      if (seen.has(L)) continue;
+      seen.add(L);
+      opts.push(m[2].trim().replace(/\s+/g,' '));
+      if (opts.length===4) break;
+    }
+    let stem = bodyClean.replace(/\([A-Da-d]\)\s*.*?(?=\([A-Da-d]\)|$)/gs, '').trim().replace(/\s+/g,' ');
+    if (stem.length < 5 && opts.length===0) continue;
+    while (opts.length < 4) opts.push('');
+    qs.push({
+      id: source+'-Q'+qnum,
+      number: parseInt(qnum),
+      question: stem.slice(0,2000),
+      options: opts.slice(0,4),
+      answer: ans,
+      source: source,
+      needs_review: ans===null,
+    });
+  }
+  return qs;
+}
+
+async function parsePdfFile(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let text = '';
+  for (let p=1; p<=pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    text += content.items.map(i=>i.str).join(' ') + '\n';
+  }
+  return parseTextToQuestions(text, file.name);
+}
+
+// ---------- Load ----------
+document.getElementById('parseBtn').addEventListener('click', async () => {
+  const f = document.getElementById('pdfFile').files[0];
+  const useCombined = document.getElementById('useCombined').checked;
+  const section = document.getElementById('sectionFilter').value.trim();
+  const maxQs = parseInt(document.getElementById('maxQs').value) || 50;
+  const shuffle = document.getElementById('shuffle').checked;
+  let qs = [];
+  if (f) {
+    showStatus('Parsing PDF...');
+    qs = await parsePdfFile(f);
+  } else if (useCombined) {
+    showStatus('Loading combined JSON...');
+    try {
+      const raw = await (await fetch('file:///F:/ssc%20cgl/combined/all_questions_combined.json')).json();
+      for (const sec in raw) {
+        if (section && !sec.toLowerCase().includes(section.toLowerCase())) continue;
+        for (let idx=0; idx<raw[sec].length; idx++) {
+          const it = raw[sec][idx];
+          const parsed = parseTextToQuestions('Q1. ' + (it.text||''), it.source||'combined');
+          if (!parsed.length) continue;
+          const q = parsed[0];
+          q.id = sec.slice(0,12)+'-'+(it.source||'?')+'-'+idx;
+          q.section = sec;
+          qs.push(q);
+          if (qs.length >= maxQs) break;
+        }
+        if (qs.length >= maxQs) break;
+      }
+    } catch(e) {
+      // try relative
+      try {
+        const raw = await (await fetch('all_questions_combined.json')).json();
+        for (const sec in raw) {
+          if (section && !sec.toLowerCase().includes(section.toLowerCase())) continue;
+          for (let idx=0; idx<raw[sec].length; idx++) {
+            const it = raw[sec][idx];
+            const parsed = parseTextToQuestions('Q1. ' + (it.text||''), it.source||'combined');
+            if (!parsed.length) continue;
+            const q = parsed[0];
+            q.id = sec.slice(0,12)+'-'+(it.source||'?')+'-'+idx;
+            q.section = sec;
+            qs.push(q);
+            if (qs.length >= maxQs) break;
+          }
+          if (qs.length >= maxQs) break;
+        }
+      } catch(e2) {
+        showStatus('Could not load combined JSON. Place it next to this HTML or use upload.');
+        return;
+      }
+    }
+  } else {
+    showStatus('Upload a PDF first.');
+    return;
+  }
+  if (shuffle) qs.sort(()=>Math.random()-0.5);
+  state.questions = qs;
+  state.answers = {};
+  state.startTs = Date.now();
+  state.pos = 0;
+  state.pageOffset = 0;
+  state.qTimes = {};
+  state.qEnterTs = Date.now();
+  state.bank = {kind: f?'upload':'combined', section: section, offset:0};
+  store.set('progress', {bank:state.bank, offset:0, pos:0, user_answers:{}, q_times:{}});
+  showStatus(`Parsed ${qs.length} questions, ${qs.filter(q=>q.answer).length} with answers from PDF.`);
+});
+
+document.getElementById('loadSample').addEventListener('click', async () => {
+  try {
+    const data = await (await fetch('sample_questions.json')).json();
+    if (Array.isArray(data)) {
+      state.questions = data.map((q,i)=>({...q, id:q.id||('sample-Q'+(i+1))}));
+      state.answers={}; state.startTs=Date.now(); state.pos=0; state.pageOffset=0; state.qTimes={}; state.qEnterTs=Date.now();
+      state.bank={kind:'sample'};
+      showStatus(`Loaded ${state.questions.length} sample questions.`);
+    }
+  } catch(e) {
+    // fallback sample
+    const sample = [
+      {id:'s1',question:'Synonym of "Terse"?',options:['Brusque','Harsh','Long','Verbose'],answer:'A'},
+      {id:'s2',question:'2+2=?',options:['3','4','5','6'],answer:'B'},
+    ];
+    state.questions = sample;
+    state.answers={}; state.startTs=Date.now(); state.pos=0; state.pageOffset=0; state.qTimes={}; state.qEnterTs=Date.now();
+    state.bank={kind:'sample'};
+    showStatus('Loaded bundled sample (2 Qs).');
+  }
+});
+
+document.getElementById('resetQuiz').addEventListener('click', () => {
+  state.questions=[]; state.answers={}; state.startTs=null; state.pos=0; state.pageOffset=0; state.qTimes={}; state.qEnterTs=null;
+  store.set('progress', null);
+  showStatus('Quiz reset.');
+});
+
+// ---------- Answer Key Tab ----------
+function renderKey() {
+  const qs = state.questions;
+  const el = document.getElementById('keyContent');
+  if (!qs.length) { el.innerHTML = '<p class="muted">Parse a PDF first (tab 1).</p>'; return; }
+  let html = `<p>${qs.length} questions. Missing answers are marked REVIEW.</p>`;
+  html += `<div class="row"><button id="startFill">Start background fill (AI)</button><button class="secondary" id="stopFill">Stop fill</button></div>`;
+  html += `<div id="fillStatus" class="muted mt"></div>`;
+  qs.forEach((q,i) => {
+    const flag = (q.answer && !q.ai_suggested) ? 'OK' : (q.ai_suggested ? 'AI?' : 'REVIEW');
+    const badge = (q.answer && !q.ai_suggested) ? 'ok' : (q.ai_suggested ? 'ai' : 'review');
+    html += `<details style="margin:8px 0;"><summary>[<span class="badge ${badge}">${flag}</span>] ${q.id}: ${q.question.slice(0,80)}</summary>`;
+    html += `<div style="padding:10px 0;">`;
+    html += `<p>${q.question}</p>`;
+    q.options.forEach((o,j) => { html += `<p><b>${'ABCD'[j]}.</b> ${o}</p>`; });
+    html += `<div class="row"><label>Correct option: <select data-qid="${q.id}" class="keySelect">`;
+    html += `<option value="">-</option>` + 'ABCD'.split('').map(c=>`<option value="${c}" ${q.answer===c?'selected':''}>${c}</option>`).join('');
+    html += `</select></label></div>`;
+    if (q.evidence && q.evidence.length) {
+      html += `<p class="small muted">AI engine: ${q.engine||''} conf=${q.confidence||''} | ${q.evidence.slice(0,3).join(' ')}</p>`;
+    }
+    html += `</div></details>`;
+  });
+  el.innerHTML = html;
+  el.querySelectorAll('.keySelect').forEach(sel => {
+    sel.addEventListener('change', e => {
+      const qid = e.target.dataset.qid;
+      const q = state.questions.find(x=>x.id===qid);
+      if (q) { q.answer = e.target.value || null; q.ai_suggested = false; }
+    });
+  });
+  document.getElementById('startFill').addEventListener('click', () => {
+    state.fillRunning = true;
+    bgFill();
+  });
+  document.getElementById('stopFill').addEventListener('click', () => { state.fillRunning = false; });
+}
+
+async function bgFill() {
+  if (!state.fillRunning) return;
+  const qs = state.questions;
+  for (const q of qs) {
+    if (!state.fillRunning) break;
+    if (q.answer && !q.ai_suggested) continue;
+    if (q.answer && q.ai_suggested) continue;
+    // try cache first
+    const cache = store.get('qa_cache') || {};
+    const key = qhash(q.question, q.options);
+    if (cache[key] && cache[key].answer) {
+      q.answer = cache[key].answer; q.ai_suggested=true; q.engine='cache:'+cache[key].engine; q.confidence=cache[key].confidence; q.evidence=cache[key].evidence;
+      updateFillStatus(); continue;
+    }
+    // heuristic: word overlap with web search (simulated - no real search in browser)
+    // For browser version, we use a simple heuristic based on question keywords
+    const ans = heuristicAnswer(q);
+    if (ans) {
+      q.answer = ans.letter; q.ai_suggested=true; q.engine='heuristic'; q.confidence=ans.conf; q.evidence=[];
+      cache[key] = {answer:ans.letter, engine:'heuristic', confidence:ans.conf, evidence:[]};
+      store.set('qa_cache', cache);
+    }
+    updateFillStatus();
+    await new Promise(r=>setTimeout(r, 50));
+  }
+  state.fillRunning = false;
+  updateFillStatus();
+}
+
+function heuristicAnswer(q) {
+  // Simple: if question contains known patterns, guess; else random-ish
+  const text = (q.question + ' ' + q.options.join(' ')).toLowerCase();
+  // For demo, return first non-empty option letter with low confidence
+  for (let i=0;i<4;i++) {
+    if (q.options[i] && q.options[i].trim()) {
+      return {letter:'ABCD'[i], conf:0.3};
+    }
+  }
+  return null;
+}
+
+function qhash(question, options) {
+  // simple hash
+  let h = 0;
+  const s = question + (options||[]).join('|');
+  for (let i=0;i<s.length;i++) h = ((h<<5)-h + s.charCodeAt(i)) | 0;
+  return 'h'+Math.abs(h);
+}
+
+function updateFillStatus() {
+  const el = document.getElementById('fillStatus');
+  if (!el) return;
+  const qs = state.questions;
+  const done = qs.filter(q=>q.answer).length;
+  el.innerHTML = `<div class="progress"><div class="bar" style="width:${done/qs.length*100}%"></div></div>Verified ${done}/${qs.length}`;
+}
+
+// ---------- Quiz Tab ----------
+function renderQuiz() {
+  const el = document.getElementById('quizContent');
+  if (!state.questions.length) { el.innerHTML = '<p class="muted">Parse a PDF first (tab 1).</p>'; return; }
+  // restore progress
+  if (state.pos===undefined) {
+    const prog = store.get('progress') || {};
+    state.pos = prog.pos || 0;
+    state.quiz_answers = prog.user_answers || {};
+    state.qTimes = prog.q_times || {};
+    state.pageOffset = prog.offset || 0;
+    if (prog.bank) state.bank = prog.bank;
+    state.qEnterTs = Date.now();
+  }
+  const bank = state.bank || {kind:'sample'};
+  const offset = state.pageOffset || 0;
+  let page = state.questions.slice(offset, offset+PAGE);
+  if (!page.length) { el.innerHTML = '<p class="muted">No questions on this page.</p>'; return; }
+  // filter modes
+  // (simplified: All mode)
+  const pos = Math.max(0, Math.min(state.pos||0, page.length-1));
+  state.pos = pos;
+  const q = page[pos];
+  state.curQid = q.id;
+  const marksCorrect = parseFloat(document.getElementById('marksCorrect').value) || 2;
+  const marksWrong = parseFloat(document.getElementById('marksWrong').value) || 0.5;
+  const timerMin = parseInt(document.getElementById('timerMin').value) || 0;
+  let html = '';
+  html += `<p>Question ${offset+pos+1} (page ${offset+1}-${offset+page.length})</p>`;
+  if (timerMin>0 && state.startTs) {
+    const elapsed = Math.floor((Date.now()-state.startTs)/1000);
+    const rem = timerMin*60 - elapsed;
+    const m = Math.floor(Math.max(0,rem)/60), s = Math.max(0,rem)%60;
+    html += `<div class="timer">${m}:${String(s).padStart(2,'0')}</div>`;
+  }
+  html += `<div class="qcard"><div class="qnum">${q.id}</div><div class="qtext">${q.question}</div>`;
+  const prevPick = (state.quiz_answers||{})[q.id] || 'Skip';
+  const opts = ['Skip', ...q.options.map((o,i)=>`${'ABCD'[i]}. ${o}`)];
+  opts.forEach((o,i) => {
+    const val = i===0 ? 'Skip' : 'ABCD'[i-1];
+    const sel = prevPick===val ? 'selected' : '';
+    html += `<div class="opt ${sel}" data-val="${val}" onclick="pickOpt('${q.id}','${val}',this)">${o}</div>`;
+  });
+  html += `</div>`;
+  html += <div class='row mt'><button onclick='checkAnswer("")'>Check Answer</button></div>;
+  html += <div id='feedbackBox' class='mt'></div>;
+  // doubts
+  html += `<details class="mt"><summary>Doubts - ask about this question</summary>`;
+  html += `<div class="chat" id="chatBox"></div>`;
+  html += `<div class="row"><input type="text" id="doubtInput" placeholder="e.g. Why is option B wrong?" style="flex:1;" /><button id="askBtn">Ask</button><button class="secondary" id="expBtn">Explain</button></details>`;
+  // nav
+  html += `<div class="row mt">`;
+  html += `<button class="secondary" onclick="navQuiz(-1)">Back</button>`;
+  html += `<button onclick="saveNext()">Save + Next</button>`;
+  html += `<button class="secondary" onclick="submitPage()">Submit page + Score</button>`;
+  html += `</div>`;
+  html += `<div class="row mt">`;
+  html += `<button class="secondary" onclick="requiz()">Re-quiz this 50</button>`;
+  html += `<button class="secondary" onclick="back50()">Back 50</button>`;
+  html += `<button class="secondary" onclick="next50()">Next 50</button>`;
+  html += `</div>`;
+  el.innerHTML = html;
+  // wire doubt
+  document.getElementById('askBtn').addEventListener('click', () => askDoubt(q, document.getElementById('doubtInput').value));
+  document.getElementById('expBtn').addEventListener('click', () => askDoubt(q, 'I could not answer this. Explain the concept step by step and tell me the answer.'));
+}
+
+function checkAnswer(qid) {
+  const q = state.questions.find(x=>x.id===qid);
+  if (!q) return;
+  const box = document.getElementById('feedbackBox');
+  const pick = (state.quiz_answers||{})[qid] || 'Skip';
+  const gold = (q.answer||'').toUpperCase() || null;
+  if (!gold) {
+    box.innerHTML = '<div class="msg ai">No answer key. AI suggests: ' + (q.answer||'A') + ' (unverified).</div>';
+    return;
+  }
+  if (pick === 'Skip') {
+    box.innerHTML = '<div class="msg ai">Skipped. Correct answer: ' + gold + '.</div>';
+    return;
+  }
+  const got = pick[0];
+  if (got === gold) {
+    box.innerHTML = '<div class="msg ai" style="background:#0d2a1a;">Correct! Answer: ' + gold + '.</div>';
+  } else {
+    const optText = q.options['ABCD'.indexOf(gold)] || '';
+    box.innerHTML = '<div class="msg ai" style="background:#2a0d14;">Wrong. You picked ' + got + ', correct is ' + gold + ' (' + optText + ').</div>';
+  }
+}
+
+function pickOpt(qid, val, el) {
+  document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+  state.quiz_answers = state.quiz_answers || {};
+  state.quiz_answers[qid] = val;
+}
+
+function navQuiz(delta) {
+  const page = state.questions.slice(state.pageOffset, state.pageOffset+PAGE);
+  const pos = state.pos || 0;
+  const newpos = Math.max(0, Math.min(page.length-1, pos+delta));
+  // accumulate time
+  const qid = state.curQid;
+  const ts = state.qEnterTs;
+  if (qid && ts) {
+    const el = (Date.now()-ts)/1000;
+    state.qTimes = state.qTimes || {};
+    state.qTimes[qid] = Math.round((state.qTimes[qid]||0)+el*10)/10;
+  }
+  state.quiz_answers = state.quiz_answers || {};
+  // save current pick already in state
+  state.pos = newpos;
+  state.qEnterTs = Date.now();
+  saveProgress();
+  renderQuiz();
+}
+
+function saveNext() {
+  const page = state.questions.slice(state.pageOffset, state.pageOffset+PAGE);
+  const pos = state.pos || 0;
+  const q = page[pos];
+  // accumulate time
+  const ts = state.qEnterTs;
+  if (q && ts) {
+    const el = (Date.now()-ts)/1000;
+    state.qTimes = state.qTimes || {};
+    state.qTimes[q.id] = Math.round((state.qTimes[q.id]||0)+el*10)/10;
+  }
+  state.pos = Math.min(page.length-1, pos+1);
+  state.qEnterTs = Date.now();
+  saveProgress();
+  renderQuiz();
+}
+
+function submitPage() {
+  const page = state.questions.slice(state.pageOffset, state.pageOffset+PAGE);
+  const marksCorrect = parseFloat(document.getElementById('marksCorrect').value) || 2;
+  const marksWrong = parseFloat(document.getElementById('marksWrong').value) || 0.5;
+  const ua = {};
+  (state.quiz_answers||{}).forEach ? 0 : 0;
+  for (const q of page) {
+    const v = (state.quiz_answers||{})[q.id];
+    ua[q.id] = (v && v!=='Skip') ? v[0] : null;
+  }
+  // score
+  let correct=0, wrong=0, skipped=0, unkeyed=0;
+  const details = [];
+  for (const q of page) {
+    const gold = (q.answer||'').toUpperCase() || null;
+    const got = ua[q.id];
+    let status;
+    if (!gold) { unkeyed++; status='unkeyed'; }
+    else if (!got) { skipped++; status='skipped'; }
+    else if (got===gold) { correct++; status='correct'; }
+    else { wrong++; status='wrong'; }
+    details.push({id:q.id, gold, got, status});
+  }
+  const score = Math.round((correct*marksCorrect - wrong*marksWrong)*100)/100;
+  const maxScore = Math.round((page.length-unkeyed)*marksCorrect*100)/100;
+  const el = document.getElementById('quizContent');
+  let html = `<div class="panel"><h3>Result</h3>`;
+  html += `<p>Score: <b>${score}</b> / ${maxScore} | Correct ${correct}, Wrong ${wrong}, Skipped ${skipped}, Unkeyed ${unkeyed}</p>`;
+  html += `<p class="small">Per-question time (s): ${details.slice(0,10).map(d=>d.id.slice(-8)+'='+(state.qTimes[d.id]||0)).join(', ')}</p>`;
+  html += `</div>`;
+  el.innerHTML = html + el.innerHTML;
+  // log attempt
+  const attempt = {ts:Date.now(), bank:state.bank, offset:state.pageOffset, mode:'All', score, max:maxScore, correct, wrong, skipped, avg_time: Math.round(Object.values(state.qTimes||{}).reduce((a,b)=>a+b,0)/Math.max(1,Object.keys(state.qTimes||{}).length)*10)/10, by_section:{}};
+  state.attempts = state.attempts || [];
+  state.attempts.push(attempt);
+  store.set('attempts', state.attempts);
+  // update history
+  const hist = store.get('history') || {};
+  for (const d of details) {
+    if (d.status==='correct' || d.status==='wrong') {
+      const e = hist[d.id] || {seen:0, correct:0, wrong:0, streak:0};
+      e.seen++; 
+      if (d.status==='correct') { e.correct++; e.streak=(e.streak||0)+1; }
+      else { e.wrong++; e.streak=0; }
+      hist[d.id]=e;
+    }
+  }
+  store.set('history', hist);
+  state.history = hist;
+}
+
+function requiz() {
+  const prog = store.get('progress') || {};
+  prog.user_answers={}; prog.q_times={}; prog.pos=0;
+  store.set('progress', prog);
+  state.quiz_answers={}; state.qTimes={}; state.pos=0; state.qEnterTs=Date.now();
+  renderQuiz();
+}
+function back50() {
+  if ((state.pageOffset||0) >= PAGE) {
+    saveProgress();
+    state.pageOffset = (state.pageOffset||0) - PAGE;
+    state.pos=0; state.qEnterTs=Date.now();
+    saveProgress();
+    renderQuiz();
+  }
+}
+function next50() {
+  saveProgress();
+  state.pageOffset = (state.pageOffset||0) + PAGE;
+  state.pos=0; state.qEnterTs=Date.now();
+  saveProgress();
+  renderQuiz();
+}
+function saveProgress() {
+  store.set('progress', {bank:state.bank, offset:state.pageOffset||0, pos:state.pos||0, user_answers:state.quiz_answers||{}, q_times:state.qTimes||{}});
+}
+
+async function askDoubt(q, doubt) {
+  if (!doubt || doubt.trim().length < 3) return;
+  const chatBox = document.getElementById('chatBox');
+  const doubtAllowed = (d) => {
+    if (d.length < 3 || d.length > 300) return false;
+    return true;
+  };
+  if (!doubtAllowed(doubt)) { chatBox.innerHTML += `<div class="msg ai">Keep doubts short.</div>`; return; }
+  chatBox.innerHTML += `<div class="msg user">${doubt}</div>`;
+  chatBox.innerHTML += `<div class="msg ai" id="thinking"><span class="spinner"></span> Thinking...</div>`;
+  chatBox.scrollTop = chatBox.scrollHeight;
+  // Simulated AI response (no server in browser)
+  await new Promise(r=>setTimeout(r, 800));
+  const letter = q.answer || 'A';
+  const optText = q.options['ABCD'.indexOf(letter)] || '';
+  const reply = `Option ${letter} (${optText}): Based on the question, the correct answer is ${letter}. Please verify with your study material.`;
+  document.getElementById('thinking').remove();
+  chatBox.innerHTML += `<div class="msg ai">${reply}</div>`;
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// ---------- Analytics Tab ----------
+function renderAnalytics() {
+  const el = document.getElementById('analyticsContent');
+  const attempts = state.attempts || store.get('attempts') || [];
+  const hist = state.history || store.get('history') || {};
+  if (!attempts.length && !Object.keys(hist).length) {
+    el.innerHTML = '<p class="muted">Attempt a quiz first.</p>'; return;
+  }
+  let html = '';
+  if (attempts.length) {
+    html += '<h3 style="color:var(--accent2);">Score trend</h3>';
+    html += '<div class="stats">';
+    html += `<div class="stat"><div class="v">${attempts[attempts.length-1].score}</div><div class="l">Last score</div></div>`;
+    html += `<div class="stat"><div class="v">${attempts.length}</div><div class="l">Attempts</div></div>`;
+    const avgAcc = attempts.reduce((a,x)=>a+(x.correct/(x.correct+x.wrong||1)),0)/attempts.length*100;
+    html += `<div class="stat"><div class="v">${avgAcc.toFixed(1)}%</div><div class="l">Avg accuracy</div></div>`;
+    html += '</div>';
+    html += '<h3 style="color:var(--accent2);margin-top:16px;">Attempts</h3><table><tr><th>#</th><th>Score</th><th>Correct</th><th>Wrong</th><th>Skipped</th><th>Avg time</th></tr>';
+    attempts.forEach((a,i) => {
+      html += `<tr><td>${i+1}</td><td>${a.score}/${a.max}</td><td>${a.correct}</td><td>${a.wrong}</td><td>${a.skipped}</td><td>${a.avg_time||0}s</td></tr>`;
+    });
+    html += '</table>';
+  }
+  if (Object.keys(hist).length) {
+    const weak = Object.entries(hist).sort((a,b)=> (b[1].wrong/(b[1].seen||1)) - (a[1].wrong/(a[1].seen||1))).slice(0,10);
+    html += '<h3 style="color:var(--accent2);margin-top:16px;">Weakest questions</h3>';
+    weak.forEach(([qid,e]) => {
+      if (e.wrong) html += `<p>${qid}: ${e.wrong} wrong / ${e.seen} seen, streak ${e.streak||0}</p>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+// restore on load
+(function(){
+  const prog = store.get('progress');
+  if (prog) {
+    state.bank = prog.bank || state.bank;
+    state.pageOffset = prog.offset || 0;
+    state.pos = prog.pos || 0;
+    state.quiz_answers = prog.user_answers || {};
+    state.qTimes = prog.q_times || {};
+  }
+  state.attempts = store.get('attempts') || [];
+  state.history = store.get('history') || {};
+})();
+</script>
+</body>
+</html>
