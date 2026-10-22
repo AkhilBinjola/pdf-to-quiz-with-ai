@@ -2,7 +2,7 @@
 
 > Turn any objective (MCQ) PDF into a practice test, take it, and get SSC-style scoring - with AI filling missing answer keys.
 
-**By Akhil Binjola.**
+**By Akhil Binjola**
 
 ## Intro
 
