@@ -11,10 +11,8 @@ import os
 import re
 import requests
 
-MODEL_GGUF = os.environ.get(
-    'MODEL_GGUF',
-    r'D:\models\HauhauCS\Qwen3.5-2B-Uncensored-HauhauCS-Aggressive\Qwen3.5-2B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf',
-)
+# Path to any small GGUF model (e.g. a Qwen 2B Q4_K_M). Empty = skip direct loading.
+MODEL_GGUF = os.environ.get('MODEL_GGUF', '')
 LLAMA_SERVER = os.environ.get('LLAMA_SERVER', 'http://localhost:8080')
 
 _LLM = None
